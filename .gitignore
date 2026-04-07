@@ -1,6 +1,12 @@
 # Ticket-Datenbank (enthält echte Nutzerdaten – nicht einchecken)
 tickets.json
 
+# Audit-Log (enthält echte Nutzerdaten – nicht einchecken)
+audit.log
+
+# Temporäre ZIP-Dateien
+*.zip
+
 # Python
 __pycache__/
 *.py[cod]
