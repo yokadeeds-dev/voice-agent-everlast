@@ -1,0 +1,43 @@
+# Ticket-Datenbank (enthält echte Nutzerdaten – nicht einchecken)
+tickets.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+
+# Umgebungsvariablen – NIEMALS einchecken!
+.env
+*.env
+secrets.txt
+
+# API-Keys (Sicherheit)
+*api_key*
+*apikey*
+
+# Piper-Modelle (zu groß für Git, >100MB)
+*.onnx
+*.onnx.json
+
+# Whisper-Cache
+~/.cache/huggingface/
+
+# Temporäre Audiodateien
+*.wav
+*.mp3
+*.flac
+!test_samples/*.wav
+
+# Windows
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# IDE
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,22 @@
+# Voice Agent – Abhängigkeiten
+# Getestet mit Python 3.11
+
+# ── LLM ───────────────────────────────────────────────────────────────────────
+anthropic>=0.40.0
+
+# ── STT ───────────────────────────────────────────────────────────────────────
+faster-whisper>=1.0.0
+
+# ── TTS (primär) ──────────────────────────────────────────────────────────────
+piper-tts>=1.2.0
+
+# ── TTS (Fallback) ────────────────────────────────────────────────────────────
+pyttsx3>=2.90
+
+# ── Audio I/O ─────────────────────────────────────────────────────────────────
+sounddevice>=0.4.6
+scipy>=1.11.0
+numpy>=1.24.0
+
+# ── Optional: schnelleres Audio-Decoding ──────────────────────────────────────
+# ffmpeg muss separat installiert sein (apt install ffmpeg / brew install ffmpeg)
