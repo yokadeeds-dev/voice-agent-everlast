@@ -17,7 +17,7 @@ from typing import Optional
 from groq import Groq
 
 from config import GROQ_API_KEY, GROQ_MODEL
-from tools import get_server_status, create_ticket
+from tools import get_server_status, create_ticket, TOOL_DEFINITIONS
 
 logger = logging.getLogger(__name__)
 
@@ -96,9 +96,9 @@ class VoiceAgent:
             "create_ticket": create_ticket,
         }
 
-    def process(self, user_text: str) -> str:
+    def process(self, user_text: str, user: str = "Unbekannt") -> str:
         """Verarbeitet eine Nutzeranfrage und gibt die fertige Antwort zurück."""
-        logger.info(f"Agent verarbeitet: '{user_text}'")
+        logger.info(f"Agent verarbeitet [{user}]: '{user_text}'")
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -142,7 +142,7 @@ class VoiceAgent:
         logger.info(f"Tool-Aufruf: {tool_name}({tool_args})")
 
         # ── Mock-API aufrufen ──────────────────────────────────────────────────
-        tool_result = self._dispatch_tool(tool_name, tool_args)
+        tool_result = self._dispatch_tool(tool_name, tool_args, user)
         logger.info(f"Tool-Ergebnis: {tool_result}")
 
         # ── Runde 2: Tool-Ergebnis → finale Antwort ───────────────────────────
@@ -171,12 +171,13 @@ class VoiceAgent:
             logger.error(f"Groq API Fehler (Runde 2): {e}")
             return self._fallback_response(tool_name, tool_result)
 
-    def _dispatch_tool(self, tool_name: str, tool_args: dict) -> dict:
+    def _dispatch_tool(self, tool_name: str, tool_args: dict, user: str = "Unbekannt") -> dict:
         fn = self._tool_dispatch.get(tool_name)
         if fn is None:
             return {"success": False, "error": f"Tool '{tool_name}' nicht gefunden."}
         try:
-            return fn(**tool_args)
+            # User-Context an alle Tool-Calls weitergeben
+            return fn(**tool_args, user=user)
         except Exception as e:
             return {"success": False, "error": str(e)}
 

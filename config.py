@@ -15,7 +15,6 @@ WHISPER_DEVICE = "cpu"
 WHISPER_COMPUTE_TYPE = "int8"   # int8 spart RAM auf CPU
 
 # ── TTS (piper-tts) ────────────────────────────────────────────────────────────
-# Modell-Pfad: wird beim ersten Start automatisch heruntergeladen (siehe tts.py)
 PIPER_MODEL = "de_DE-thorsten-high"   # Fallback: pyttsx3, wenn Piper nicht verfügbar
 PIPER_SAMPLE_RATE = 22050
 
@@ -24,10 +23,13 @@ MIC_SAMPLE_RATE = 16000         # Whisper bevorzugt 16 kHz
 MIC_CHANNELS = 1
 MIC_RECORD_SECONDS = 6          # Max. Aufnahmedauer pro Utterance
 MIC_SILENCE_THRESHOLD = 0.01    # RMS-Schwellwert für Stille-Erkennung
-MIC_SILENCE_DURATION = 1.5      # Sekunden Stille → Aufnahme beenden
+MIC_SILENCE_DURATION = 0.8      # Sekunden Stille → Aufnahme beenden (0.8s statt 1.5s = ~700ms gespart)
+
+# ── Sicherheit / User-Context ──────────────────────────────────────────────────
+DEFAULT_USER = "Unbekannt"      # Wird überschrieben durch --user Parameter
+AUDIT_LOG_FILE = "audit.log"    # Audit-Log: Wer hat wann was abgefragt
 
 # ── Mock-Server-Registry ───────────────────────────────────────────────────────
-# Bekannte Server für get_server_status()
 KNOWN_SERVERS = {
     "web-01": {
         "status": "online",
@@ -68,5 +70,5 @@ KNOWN_SERVERS = {
     },
 }
 
-# ── Ticket-System (Mock) ───────────────────────────────────────────────────────
-TICKET_COUNTER_START = 5001     # Nächste Ticket-ID (wird im Prototyp nicht persistent gespeichert)
+# ── Ticket-System ──────────────────────────────────────────────────────────────
+TICKET_COUNTER_START = 5001

@@ -82,23 +82,27 @@ class TextToSpeech:
     def _try_piper(self, text: str) -> bool:
         """Piper via Python-API (piper-tts pip package)."""
         try:
-            import piper
-            from piper.voice import PiperVoice
             import sounddevice as sd
             import numpy as np
+            import io, wave
 
             voice = self._get_piper_voice()
             if voice is None:
                 return False
 
-            audio_chunks = []
-            for audio_bytes in voice.synthesize_stream_raw(text):
-                audio_chunks.append(np.frombuffer(audio_bytes, dtype=np.int16))
+            # synthesize_wav → WAV-Bytes → numpy → sounddevice
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)  # int16
+                wf.setframerate(voice.config.sample_rate)
+                voice.synthesize(text, wf)
 
-            if not audio_chunks:
-                return False
+            wav_buffer.seek(0)
+            with wave.open(wav_buffer, "rb") as wf:
+                frames = wf.readframes(wf.getnframes())
+                audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
 
-            audio = np.concatenate(audio_chunks).astype(np.float32) / 32768.0
             sd.play(audio, samplerate=voice.config.sample_rate, blocking=True)
             self._engine_name = "piper"
             return True

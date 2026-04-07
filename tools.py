@@ -2,27 +2,40 @@
 tools.py – Mock-API für den Voice Agent
 
 Enthält:
-  - get_server_status(server_id)  → Serversystem-Abfrage
-  - create_ticket(issue)          → CRM/Ticketsystem-Eintrag
+  - get_server_status(server_id, user)  → Serversystem-Abfrage + Audit-Log
+  - create_ticket(issue, priority, user) → CRM/Ticketsystem + Audit-Log
+  - list_tickets()                       → Alle gespeicherten Tickets
 
-Beide Funktionen sind bewusst "defensive" implementiert:
-Sie geben immer ein strukturiertes Dict zurück – nie Exceptions –
-damit der LLM-Layer immer eine interpretierbare Antwort erhält.
+Jede Aktion wird im Audit-Log mit Benutzer + Zeitstempel erfasst.
 """
 
 import random
-import time
 import json
 import os
 from datetime import datetime
 from pathlib import Path
-from config import KNOWN_SERVERS, TICKET_COUNTER_START
+from config import KNOWN_SERVERS, TICKET_COUNTER_START, AUDIT_LOG_FILE
 
 # ── Persistenter Ticket-Speicher ───────────────────────────────────────────────
 TICKETS_FILE = Path(__file__).parent / "tickets.json"
+AUDIT_FILE   = Path(__file__).parent / AUDIT_LOG_FILE
+
+
+def _write_audit(user: str, action: str, detail: str, success: bool):
+    """Schreibt einen Eintrag ins Audit-Log."""
+    status = "OK" if success else "FEHLER"
+    entry = (
+        f"{datetime.now().isoformat(timespec='seconds')} "
+        f"| {status} | Benutzer: {user} | Aktion: {action} | {detail}\n"
+    )
+    try:
+        with open(AUDIT_FILE, "a", encoding="utf-8") as f:
+            f.write(entry)
+    except IOError:
+        pass  # Audit-Fehler darf System nicht stoppen
+
 
 def _load_tickets() -> dict:
-    """Lädt Tickets aus der JSON-Datei. Erstellt leere Datei wenn nicht vorhanden."""
     if TICKETS_FILE.exists():
         try:
             with open(TICKETS_FILE, "r", encoding="utf-8") as f:
@@ -31,8 +44,8 @@ def _load_tickets() -> dict:
             pass
     return {"tickets": [], "last_id": TICKET_COUNTER_START - 1}
 
+
 def _save_tickets(data: dict) -> bool:
-    """Speichert Tickets in die JSON-Datei."""
     try:
         with open(TICKETS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -41,47 +54,38 @@ def _save_tickets(data: dict) -> bool:
         print(f"[WARNUNG] Tickets konnten nicht gespeichert werden: {e}")
         return False
 
-# Ticket-Daten beim Start laden
+
 _ticket_data = _load_tickets()
 _ticket_counter = _ticket_data["last_id"]
 
 
-def get_server_status(server_id: str) -> dict:
+def get_server_status(server_id: str, user: str = "Unbekannt") -> dict:
     """
-    Fragt den Status eines Servers ab.
+    Fragt den Status eines Servers ab und loggt wer gefragt hat.
 
     Args:
-        server_id: Server-Bezeichner, z. B. "web-01", "db-02"
-
-    Returns:
-        dict mit Feldern:
-          - success (bool)
-          - server_id (str)
-          - status (str): "online" | "degraded" | "offline"
-          - cpu (int): CPU-Auslastung in Prozent
-          - ram (int): RAM-Auslastung in Prozent
-          - uptime_h (int): Uptime in Stunden
-          - region (str)
-          - alert (str | None): optionale Warnung
-          - error (str | None): Fehlermeldung, falls Server unbekannt
+        server_id: Server-Bezeichner, z. B. "web-01"
+        user:      Anfragender Benutzer (für Audit-Log)
     """
-    # Normalisierung: Leerzeichen, Groß-/Kleinschreibung
     normalized_id = server_id.strip().lower()
 
     if normalized_id not in KNOWN_SERVERS:
+        _write_audit(user, "SERVER_STATUS", f"server_id={server_id} → nicht gefunden", False)
         return {
             "success": False,
             "server_id": server_id,
-            "error": f"Server '{server_id}' nicht gefunden. "
-                     f"Bekannte Server: {', '.join(sorted(KNOWN_SERVERS.keys()))}.",
+            "error": (
+                f"Server '{server_id}' nicht gefunden. "
+                f"Bekannte Server: {', '.join(sorted(KNOWN_SERVERS.keys()))}."
+            ),
         }
 
     data = KNOWN_SERVERS[normalized_id].copy()
-
-    # Leichte Simulation von Messrauschen bei CPU/RAM (±3 %)
     if data["status"] != "offline":
         data["cpu"] = max(0, min(100, data["cpu"] + random.randint(-3, 3)))
         data["ram"] = max(0, min(100, data["ram"] + random.randint(-3, 3)))
+
+    _write_audit(user, "SERVER_STATUS", f"server_id={normalized_id} status={data['status']}", True)
 
     return {
         "success": True,
@@ -92,45 +96,35 @@ def get_server_status(server_id: str) -> dict:
         "uptime_h": data["uptime_h"],
         "region": data["region"],
         "alert": data.get("alert"),
+        "queried_by": user,
         "error": None,
     }
 
 
-def create_ticket(issue: str, priority: str = "normal") -> dict:
+def create_ticket(issue: str, priority: str = "normal", user: str = "Unbekannt") -> dict:
     """
-    Erstellt ein neues Support-Ticket im CRM und speichert es persistent.
+    Erstellt ein Ticket und speichert es persistent. Loggt den Ersteller.
 
     Args:
-        issue:    Freitextbeschreibung des Problems / der Notiz
+        issue:    Freitextbeschreibung
         priority: "niedrig" | "normal" | "hoch" | "kritisch"
-
-    Returns:
-        dict mit Feldern:
-          - success (bool)
-          - ticket_id (str)
-          - issue (str)
-          - priority (str)
-          - created_at (str): ISO-Zeitstempel
-          - estimated_response (str): erwartete Reaktionszeit
-          - saved_to (str): Pfad zur Ticket-Datei
-          - error (str | None)
+        user:     Ersteller (für Audit-Log und Ticket)
     """
     global _ticket_counter, _ticket_data
 
     if not issue or not issue.strip():
+        _write_audit(user, "CREATE_TICKET", "Fehlgeschlagen – kein Text", False)
         return {
             "success": False,
             "ticket_id": None,
             "error": "Kein Problemtext übermittelt. Bitte Problembeschreibung angeben.",
         }
 
-    # Priority-Mapping DE → EN
     priority_map = {
         "niedrig": "low", "normal": "normal", "hoch": "high", "kritisch": "critical",
         "low": "low", "medium": "normal", "high": "high", "critical": "critical",
     }
     priority_normalized = priority_map.get(priority.lower(), "normal")
-
     response_time_map = {
         "low": "3 Werktage", "normal": "1 Werktag",
         "high": "4 Stunden", "critical": "30 Minuten",
@@ -144,21 +138,24 @@ def create_ticket(issue: str, priority: str = "normal") -> dict:
         "ticket_id": ticket_id,
         "issue": issue.strip(),
         "priority": priority_normalized,
+        "created_by": user,
         "created_at": created_at,
         "estimated_response": response_time_map[priority_normalized],
         "status": "open",
     }
 
-    # Persistent speichern
     _ticket_data["tickets"].append(ticket)
     _ticket_data["last_id"] = _ticket_counter
     saved = _save_tickets(_ticket_data)
+
+    _write_audit(user, "CREATE_TICKET", f"ticket_id={ticket_id} priority={priority_normalized}", True)
 
     return {
         "success": True,
         "ticket_id": ticket_id,
         "issue": issue.strip(),
         "priority": priority_normalized,
+        "created_by": user,
         "created_at": created_at,
         "estimated_response": response_time_map[priority_normalized],
         "saved_to": str(TICKETS_FILE) if saved else None,
@@ -166,12 +163,10 @@ def create_ticket(issue: str, priority: str = "normal") -> dict:
     }
 
 
-def list_tickets() -> dict:
-    """
-    Gibt alle gespeicherten Tickets zurück.
-    Nützlich für Diagnose und Anzeige aller offenen Tickets.
-    """
+def list_tickets(user: str = "Unbekannt") -> dict:
+    """Gibt alle gespeicherten Tickets zurück."""
     data = _load_tickets()
+    _write_audit(user, "LIST_TICKETS", f"total={len(data['tickets'])}", True)
     return {
         "success": True,
         "total": len(data["tickets"]),
@@ -180,53 +175,50 @@ def list_tickets() -> dict:
     }
 
 
-# ── Tool-Definitionen für das Groq/Anthropic Tool-Calling-Schema ───────────────
-# Diese Liste wird direkt an die Claude API übergeben.
-
+# ── Tool-Definitionen für das Groq Tool-Calling-Schema ────────────────────────
 TOOL_DEFINITIONS = [
     {
-        "name": "get_server_status",
-        "description": (
-            "Fragt den aktuellen Status eines internen Servers ab. "
-            "Gibt Informationen zu Betriebsstatus, CPU-Auslastung, RAM-Auslastung, "
-            "Uptime und Region zurück. Zu verwenden, wenn der Nutzer nach dem Zustand, "
-            "der Verfügbarkeit oder der Last eines Servers fragt."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "server_id": {
-                    "type": "string",
-                    "description": (
-                        "ID des Servers, z. B. 'web-01', 'db-02', 'cache-01'. "
-                        "Groß-/Kleinschreibung wird ignoriert."
-                    ),
-                }
+        "type": "function",
+        "function": {
+            "name": "get_server_status",
+            "description": (
+                "Fragt den aktuellen Status eines internen Servers ab. "
+                "Gibt Betriebsstatus, CPU, RAM, Uptime und Region zurück."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "server_id": {
+                        "type": "string",
+                        "description": "ID des Servers, z.B. 'web-01', 'db-02', 'cache-01'.",
+                    }
+                },
+                "required": ["server_id"],
             },
-            "required": ["server_id"],
         },
     },
     {
-        "name": "create_ticket",
-        "description": (
-            "Erstellt ein neues Support-Ticket oder eine Notiz im CRM-System. "
-            "Zu verwenden, wenn der Nutzer ein Problem melden, eine Aufgabe erfassen "
-            "oder eine Notiz diktieren möchte."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "issue": {
-                    "type": "string",
-                    "description": "Freitextbeschreibung des Problems oder der Notiz.",
+        "type": "function",
+        "function": {
+            "name": "create_ticket",
+            "description": (
+                "Erstellt ein neues Support-Ticket oder eine Notiz im CRM-System."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "issue": {
+                        "type": "string",
+                        "description": "Freitextbeschreibung des Problems oder der Notiz.",
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["niedrig", "normal", "hoch", "kritisch"],
+                        "description": "Priorität des Tickets. Standard: normal.",
+                    },
                 },
-                "priority": {
-                    "type": "string",
-                    "enum": ["niedrig", "normal", "hoch", "kritisch"],
-                    "description": "Priorität des Tickets. Standard: 'normal'.",
-                },
+                "required": ["issue"],
             },
-            "required": ["issue"],
         },
     },
 ]
