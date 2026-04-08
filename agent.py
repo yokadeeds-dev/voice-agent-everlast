@@ -17,7 +17,7 @@ from typing import Optional
 from groq import Groq
 
 from config import GROQ_API_KEY, GROQ_MODEL
-from tools import get_server_status, create_ticket, TOOL_DEFINITIONS
+from tools import get_server_status, create_ticket, list_tickets, TOOL_DEFINITIONS
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ SYSTEM_PROMPT = """Du bist ein präziser Voice-Agent für interne IT- und CRM-Sy
 DEINE AUFGABEN:
 - Serverstatus abfragen: Wenn der Nutzer nach dem Status eines Servers fragt → rufe IMMER get_server_status auf.
 - Ticket erstellen: Wenn der Nutzer ein Problem melden oder eine Notiz diktieren möchte → rufe IMMER create_ticket auf.
+- Tickets auflisten: Wenn der Nutzer alle Tickets sehen oder einen Überblick möchte → rufe IMMER list_tickets auf.
 
 REGELN:
 1. Antworte IMMER auf Deutsch.
@@ -38,50 +39,11 @@ REGELN:
 FEW-SHOT-BEISPIELE:
 - "Wie läuft web-01?" → get_server_status(server_id="web-01")
 - "Erstell ein Ticket: Login funktioniert nicht." → create_ticket(issue="Login funktioniert nicht", priority="normal")
+- "Zeig mir alle Tickets." → list_tickets()
 """
 
-# Tool-Definitionen im OpenAI-Format (Groq-kompatibel)
-GROQ_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_server_status",
-            "description": "Fragt den aktuellen Status eines internen Servers ab. Gibt Betriebsstatus, CPU, RAM, Uptime und Region zurück.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "server_id": {
-                        "type": "string",
-                        "description": "ID des Servers, z.B. 'web-01', 'db-02', 'cache-01'.",
-                    }
-                },
-                "required": ["server_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_ticket",
-            "description": "Erstellt ein neues Support-Ticket oder eine Notiz im CRM-System.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "issue": {
-                        "type": "string",
-                        "description": "Freitextbeschreibung des Problems oder der Notiz.",
-                    },
-                    "priority": {
-                        "type": "string",
-                        "enum": ["niedrig", "normal", "hoch", "kritisch"],
-                        "description": "Priorität des Tickets. Standard: normal.",
-                    },
-                },
-                "required": ["issue"],
-            },
-        },
-    },
-]
+# Tool-Definitionen: einzige Quelle der Wahrheit liegt in tools.py
+# TOOL_DEFINITIONS wird direkt importiert – kein lokaler Klon nötig.
 
 
 class VoiceAgent:
@@ -94,6 +56,7 @@ class VoiceAgent:
         self._tool_dispatch = {
             "get_server_status": get_server_status,
             "create_ticket": create_ticket,
+            "list_tickets": list_tickets,
         }
 
     def process(self, user_text: str, user: str = "Unbekannt") -> str:
@@ -110,7 +73,7 @@ class VoiceAgent:
             response = self._client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=messages,
-                tools=GROQ_TOOLS,
+                tools=TOOL_DEFINITIONS,
                 tool_choice="auto",
                 max_tokens=1024,
             )
@@ -157,7 +120,7 @@ class VoiceAgent:
             final_response = self._client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=messages,
-                tools=GROQ_TOOLS,
+                tools=TOOL_DEFINITIONS,
                 max_tokens=512,
             )
             final_text = final_response.choices[0].message.content or ""
@@ -222,5 +185,12 @@ class VoiceAgent:
         if tool_name == "create_ticket":
             if result.get("success"):
                 return f"Ticket {result['ticket_id']} wurde erstellt."
+            return f"Fehler: {result.get('error', 'Unbekannt')}"
+        if tool_name == "list_tickets":
+            if result.get("success"):
+                total = result.get("total", 0)
+                if total == 0:
+                    return "Es sind noch keine Tickets vorhanden."
+                return f"Es gibt aktuell {total} Ticket(e) im System."
             return f"Fehler: {result.get('error', 'Unbekannt')}"
         return "Die Anfrage wurde verarbeitet."

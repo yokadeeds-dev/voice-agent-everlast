@@ -134,14 +134,32 @@ class SpeechToText:
 
     # ── WAV-Datei ──────────────────────────────────────────────────────────────
 
+    SUPPORTED_FORMATS = {".wav", ".mp3", ".flac", ".m4a"}
+    FFMPEG_FORMATS   = {".mp3", ".flac", ".m4a"}  # benötigen ffmpeg
+
     def transcribe_file(self, path: str) -> STTResult:
-        """Transkribiert eine WAV-Datei."""
+        """
+        Transkribiert eine Audio-Datei.
+        WAV: nativ unterstützt.
+        MP3/FLAC/M4A: erfordert ffmpeg (winget install ffmpeg / apt install ffmpeg).
+        """
         p = Path(path)
         if not p.exists():
             return STTResult(error=f"Datei nicht gefunden: {path}")
-        if p.suffix.lower() not in (".wav", ".mp3", ".flac", ".m4a"):
-            return STTResult(error=f"Nicht unterstütztes Format: {p.suffix}")
-
+        suffix = p.suffix.lower()
+        if suffix not in self.SUPPORTED_FORMATS:
+            return STTResult(error=f"Nicht unterstütztes Format: {suffix}. Erlaubt: {', '.join(sorted(self.SUPPORTED_FORMATS))}")
+        if suffix in self.FFMPEG_FORMATS:
+            import shutil
+            if shutil.which("ffmpeg") is None:
+                return STTResult(
+                    error=(
+                        f"ffmpeg wird für {suffix}-Dateien benötigt, ist aber nicht installiert.\n"
+                        "  Windows: winget install ffmpeg\n"
+                        "  Linux:   apt install ffmpeg\n"
+                        "  Mac:     brew install ffmpeg"
+                    )
+                )
         return self._transcribe_path(str(p))
 
     # ── Interne Transkriptions-Logik ───────────────────────────────────────────

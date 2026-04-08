@@ -141,9 +141,14 @@ class TextToSpeech:
             from piper.voice import PiperVoice
             # Sucht nach heruntergeladenen Modellen im Home-Verzeichnis
             model_dirs = [
+                # Linux / Mac
                 Path.home() / ".local" / "share" / "piper",
                 Path.home() / "piper-models",
                 Path("/usr/share/piper"),
+                # Windows
+                Path(os.environ.get("LOCALAPPDATA", "")) / "piper",
+                Path(os.environ.get("APPDATA", "")) / "piper",
+                Path.home() / "AppData" / "Local" / "piper",
             ]
             onnx_file = None
             for d in model_dirs:
