@@ -1,8 +1,8 @@
 # Voice Agent – Abhängigkeiten
 # Getestet mit Python 3.11
 
-# ── LLM ───────────────────────────────────────────────────────────────────────
-anthropic>=0.40.0
+# ── LLM (Groq API – Tool Calling, kostenlos für Demo) ────────────────────────
+groq>=0.9.0
 
 # ── STT ───────────────────────────────────────────────────────────────────────
 faster-whisper>=1.0.0
@@ -18,5 +18,8 @@ sounddevice>=0.4.6
 scipy>=1.11.0
 numpy>=1.24.0
 
-# ── Optional: schnelleres Audio-Decoding ──────────────────────────────────────
-# ffmpeg muss separat installiert sein (apt install ffmpeg / brew install ffmpeg)
+# ── Optional: Non-WAV-Formate (mp3, flac, m4a) ───────────────────────────────
+# ffmpeg muss separat installiert sein:
+#   Windows: winget install ffmpeg  /  choco install ffmpeg
+#   Linux:   apt install ffmpeg
+#   Mac:     brew install ffmpeg

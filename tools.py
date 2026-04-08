@@ -112,6 +112,7 @@ def create_ticket(issue: str, priority: str = "normal", user: str = "Unbekannt")
     """
     global _ticket_counter, _ticket_data
 
+    MAX_ISSUE_LENGTH = 1000
     if not issue or not issue.strip():
         _write_audit(user, "CREATE_TICKET", "Fehlgeschlagen – kein Text", False)
         return {
@@ -119,6 +120,7 @@ def create_ticket(issue: str, priority: str = "normal", user: str = "Unbekannt")
             "ticket_id": None,
             "error": "Kein Problemtext übermittelt. Bitte Problembeschreibung angeben.",
         }
+    issue = issue.strip()[:MAX_ISSUE_LENGTH]
 
     priority_map = {
         "niedrig": "low", "normal": "normal", "hoch": "high", "kritisch": "critical",
@@ -176,6 +178,7 @@ def list_tickets(user: str = "Unbekannt") -> dict:
 
 
 # ── Tool-Definitionen für das Groq Tool-Calling-Schema ────────────────────────
+# Einzige Quelle der Wahrheit – wird direkt in agent.py importiert.
 TOOL_DEFINITIONS = [
     {
         "type": "function",
@@ -209,7 +212,7 @@ TOOL_DEFINITIONS = [
                 "properties": {
                     "issue": {
                         "type": "string",
-                        "description": "Freitextbeschreibung des Problems oder der Notiz.",
+                        "description": "Freitextbeschreibung des Problems oder der Notiz (max. 1000 Zeichen).",
                     },
                     "priority": {
                         "type": "string",
@@ -218,6 +221,21 @@ TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["issue"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_tickets",
+            "description": (
+                "Listet alle bisher erstellten Support-Tickets auf. "
+                "Aufrufen wenn der Nutzer fragt welche Tickets existieren oder den Überblick möchte."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
             },
         },
     },

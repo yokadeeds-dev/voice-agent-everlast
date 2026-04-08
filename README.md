@@ -144,10 +144,10 @@ python main.py --demo --verbose
 ## Projektstruktur
 
 ```
-Testaufgabe/
+voice-agent-everlast/
 ├── main.py          # Orchestrierung (--text, --file, --demo, Mikrofon)
 ├── agent.py         # Groq Tool-Calling-Loop (Kernlogik)
-├── tools.py         # Mock-API + Tool-Definitionen
+├── tools.py         # Mock-API + Tool-Definitionen (Single Source of Truth)
 ├── stt.py           # faster-whisper Wrapper
 ├── tts.py           # Piper TTS + pyttsx3 Fallback
 ├── config.py        # Konfiguration (Modelle, Server-Registry)
